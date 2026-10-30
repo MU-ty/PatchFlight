@@ -23,7 +23,7 @@ def call_model(messages, model, base_url, key):
     req=urllib.request.Request(base_url.rstrip('/')+'/chat/completions',data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'})
     with urllib.request.urlopen(req,timeout=90) as r: return json.load(r)['choices'][0]['message']['content']
 
-def execute(source, task, trace_path, model_fn, steps=8, timeout=20):
+def execute(source, task, trace_path, model_fn, steps=8, timeout=20, evaluator=None):
     source=Path(source).resolve(); trace=Trace(trace_path); run_id=uuid.uuid4().hex[:12]
     with tempfile.TemporaryDirectory(prefix='patchflight-') as tmp:
         root=Path(tmp)/'repo'; shutil.copytree(source,root,ignore=shutil.ignore_patterns('.git','__pycache__','.patchflight'))
@@ -44,7 +44,8 @@ def execute(source, task, trace_path, model_fn, steps=8, timeout=20):
                     if not changed or last_test is None or last_test['exit_code']!=0 or dirty: result={'error':'A change and a passing test after the final edit are required.'}
                     else:
                         patch=subprocess.run(['diff','-ruN',str(source),str(root),'--exclude=.git','--exclude=__pycache__','--exclude=.patchflight'],capture_output=True,text=True).stdout
-                        trace.emit('run_finished',run_id=run_id,status='passed',summary=action.get('summary',''),patch=patch,changed=sorted(changed)); return {'status':'passed','patch':patch,'run_id':run_id}
+                        evaluation = evaluator(root) if evaluator else None
+                        trace.emit('run_finished',run_id=run_id,status='passed',summary=action.get('summary',''),patch=patch,changed=sorted(changed)); return {'status':'passed','patch':patch,'run_id':run_id,'evaluation':evaluation}
                 else: result={'error':'unknown action'}
             except Exception as e: result={'error':f'{type(e).__name__}: {e}'}; kind='error'
             trace.emit('tool_result',step=step,action=kind,result=result)
@@ -62,3 +63,4 @@ def main():
     if not key or not a.model: p.error('Set API_KEY and MODEL (or --model)')
     print(json.dumps(execute(a.repo,a.task,a.trace,lambda m:call_model(m,a.model,a.base_url,key),steps=a.steps),ensure_ascii=False,indent=2))
 if __name__=='__main__': main()
+

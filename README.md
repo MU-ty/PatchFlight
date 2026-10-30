@@ -31,3 +31,17 @@ This is a small prototype, not a security sandbox. Tests execute arbitrary repos
 ## Design notes
 
 The harness separates model decisions from deterministic tool execution. The test gate is an explicit state transition: editing invalidates the previous passing result. Recording both actions and observations makes failures inspectable, though replay does not re-execute them. A useful next step is a benchmark across independently authored bug fixtures, with success, tool errors, steps, latency and token usage reported separately.
+
+
+## Deterministic regression benchmark
+
+```bash
+python benchmark/run.py --output /tmp/patchflight-benchmark.json
+python -m unittest discover -s tests -v
+```
+
+The benchmark runs three small, independent Python bugs (addition, final-element search, and name normalization). Each fixture starts with a failing visible unittest and runs in a fresh disposable workspace. The scripted model supplies a known repair, runs the visible tests, and finishes. A separate oracle outside that workspace checks additional cases; success requires the baseline test to fail, the harness to pass, and the oracle to pass. The oracle is not presented in the agent's workspace, but these fixtures and scripts are public, so this is not a blinded model evaluation. Test commands execute trusted code with your privileges; this is not a security sandbox.
+
+The JSON report includes per-case and aggregate successes and tool errors. `steps` counts model responses (including finish); `tool_errors` counts tool results containing an error and test timeouts, but an ordinary nonzero test result is an observation, not a tool error. `latency_seconds` is measured wall time for the scripted harness run and external oracle, excluding the initial baseline check; it varies by machine and does not represent model API latency. `token_usage` is `null` because the script uses no model provider, and the current real-model adapter does not retain provider usage; it is not zero and is not estimated. A nonzero exit status means at least one case failed.
+
+These results verify a small end-to-end harness workflow, not real-model repair success, generalization, cost, or production reliability. A real-model benchmark needs provider-reported token usage, repeatable model/configuration metadata, more independently sourced tasks, and separately reported runs and failures. The scripts embed the solutions; their success rate must never be presented as a model success rate.
